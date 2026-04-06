@@ -23,6 +23,7 @@ USE_REGISTRATION_PROXY="${USE_REGISTRATION_PROXY:-false}"
 mkdir -p "${INSTALL_DIR}/config" "${INSTALL_DIR}/codex_tokens"
 touch "${INSTALL_DIR}/ak.txt" "${INSTALL_DIR}/rk.txt" "${INSTALL_DIR}/registered_accounts.txt" "${INSTALL_DIR}/dan-web.log"
 
+write_config() {
 python3 - "$INSTALL_DIR" "$DOMAINS_FILE" "$DEFAULT_CONFIG_FILE" "$DEFAULT_WEB_CONFIG_FILE" "$UPLOAD_API_URL" "$UPLOAD_API_TOKEN" "$CPA_BASE_URL" "$CPA_TOKEN" "$MAIL_API_URL" "$MAIL_API_KEY" "$THREADS" "$TARGET_MIN_TOKENS" "$WEB_TOKEN" "$CLIENT_API_TOKEN" "$PORT" "$DEFAULT_PROXY" "$USE_REGISTRATION_PROXY" <<'PY'
 import json
 import sys
@@ -100,6 +101,18 @@ web_config.update({
 config_path.write_text(json.dumps(config, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 web_config_path.write_text(json.dumps(web_config, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 PY
+}
+
+write_config
+
+bootstrap_log="${INSTALL_DIR}/dan-web.log"
+/usr/local/bin/dan-web >>"${bootstrap_log}" 2>&1 &
+bootstrap_pid=$!
+sleep 4 || true
+kill "${bootstrap_pid}" 2>/dev/null || true
+wait "${bootstrap_pid}" 2>/dev/null || true
+
+write_config
 
 cd "${INSTALL_DIR}"
 echo "[openreg] config seeded to ${INSTALL_DIR}"
