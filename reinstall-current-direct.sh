@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_SOURCE="${BASH_SOURCE[0]:-}"
+SCRIPT_DIR="$(cd -- "$(dirname -- "$SCRIPT_SOURCE")" && pwd)"
 ASSETS_DIR="${SCRIPT_DIR}/assets"
+REMOTE_ASSETS_BASE="${REMOTE_ASSETS_BASE:-https://raw.githubusercontent.com/WenJiazhi/openreg/main/assets}"
+BOOTSTRAP_TMP=""
 
 INSTALL_DIR="${HOME}/dan-runtime"
 CPA_BASE_URL="${CPA_BASE_URL:-https://cpa.cpapi.app/}"
@@ -34,8 +37,19 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ ! -f "$BIN_SOURCE" ]]; then
-  echo "missing binary: $BIN_SOURCE" >&2
-  exit 1
+  if ! command -v curl >/dev/null 2>&1; then
+    echo "missing binary: $BIN_SOURCE" >&2
+    exit 1
+  fi
+  BOOTSTRAP_TMP="$(mktemp -d)"
+  ASSETS_DIR="$BOOTSTRAP_TMP/assets"
+  mkdir -p "$ASSETS_DIR"
+  curl -fsSL "${REMOTE_ASSETS_BASE}/dan-web-linux-amd64" -o "${ASSETS_DIR}/dan-web-linux-amd64"
+  curl -fsSL "${REMOTE_ASSETS_BASE}/domains.txt" -o "${ASSETS_DIR}/domains.txt"
+  curl -fsSL "${REMOTE_ASSETS_BASE}/SHA256SUMS.txt" -o "${ASSETS_DIR}/SHA256SUMS.txt"
+  BIN_SOURCE="${ASSETS_DIR}/dan-web-linux-amd64"
+  DOMAINS_FILE="${ASSETS_DIR}/domains.txt"
+  SHA256_FILE="${ASSETS_DIR}/SHA256SUMS.txt"
 fi
 
 if [[ ! -f "$DOMAINS_FILE" ]]; then
@@ -195,3 +209,7 @@ print("cpa.active =", obj.get("cpa", {}).get("active"))
 print("running =", obj.get("state", {}).get("running"))
 print("current_job =", obj.get("state", {}).get("current_job"))
 PY
+
+if [[ -n "$BOOTSTRAP_TMP" ]]; then
+  rm -rf "$BOOTSTRAP_TMP"
+fi
