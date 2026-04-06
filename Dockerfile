@@ -23,6 +23,7 @@ RUN apt-get update \
 WORKDIR /opt/openreg
 
 COPY assets /opt/openreg/assets
+COPY defaults /opt/openreg/defaults
 COPY entrypoint.sh /entrypoint.sh
 COPY assets/dan-web-linux-amd64 /usr/local/bin/dan-web
 

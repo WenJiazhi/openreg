@@ -3,6 +3,8 @@ set -euo pipefail
 
 INSTALL_DIR="${INSTALL_DIR:-/data}"
 DOMAINS_FILE="${DOMAINS_FILE:-/opt/openreg/assets/domains.txt}"
+DEFAULT_CONFIG_FILE="${DEFAULT_CONFIG_FILE:-/opt/openreg/defaults/config.json}"
+DEFAULT_WEB_CONFIG_FILE="${DEFAULT_WEB_CONFIG_FILE:-/opt/openreg/defaults/web_config.json}"
 
 CPA_BASE_URL="${CPA_BASE_URL:-https://cpa.cpapi.app/}"
 CPA_TOKEN="${CPA_TOKEN:-admin123}"
@@ -21,7 +23,7 @@ USE_REGISTRATION_PROXY="${USE_REGISTRATION_PROXY:-false}"
 mkdir -p "${INSTALL_DIR}/config" "${INSTALL_DIR}/codex_tokens"
 touch "${INSTALL_DIR}/ak.txt" "${INSTALL_DIR}/rk.txt" "${INSTALL_DIR}/registered_accounts.txt" "${INSTALL_DIR}/dan-web.log"
 
-python3 - "$INSTALL_DIR" "$DOMAINS_FILE" "$UPLOAD_API_URL" "$UPLOAD_API_TOKEN" "$CPA_BASE_URL" "$CPA_TOKEN" "$MAIL_API_URL" "$MAIL_API_KEY" "$THREADS" "$TARGET_MIN_TOKENS" "$WEB_TOKEN" "$CLIENT_API_TOKEN" "$PORT" "$DEFAULT_PROXY" "$USE_REGISTRATION_PROXY" <<'PY'
+python3 - "$INSTALL_DIR" "$DOMAINS_FILE" "$DEFAULT_CONFIG_FILE" "$DEFAULT_WEB_CONFIG_FILE" "$UPLOAD_API_URL" "$UPLOAD_API_TOKEN" "$CPA_BASE_URL" "$CPA_TOKEN" "$MAIL_API_URL" "$MAIL_API_KEY" "$THREADS" "$TARGET_MIN_TOKENS" "$WEB_TOKEN" "$CLIENT_API_TOKEN" "$PORT" "$DEFAULT_PROXY" "$USE_REGISTRATION_PROXY" <<'PY'
 import json
 import sys
 from pathlib import Path
@@ -29,6 +31,8 @@ from pathlib import Path
 (
     install_dir,
     domains_file,
+    default_config_file,
+    default_web_config_file,
     upload_api_url,
     upload_api_token,
     cpa_base_url,
@@ -45,38 +49,43 @@ from pathlib import Path
 ) = sys.argv[1:]
 
 base = Path(install_dir)
+config_path = base / "config.json"
+web_config_path = base / "config" / "web_config.json"
 domains = [
     line.strip()
     for line in Path(domains_file).read_text(encoding="utf-8").splitlines()
     if line.strip() and not line.lstrip().startswith("#")
 ]
 
-config = {
+def load_default(path: str):
+    p = Path(path)
+    if p.exists():
+        return json.loads(p.read_text(encoding="utf-8"))
+    return {}
+
+config = load_default(default_config_file)
+config.update({
     "ak_file": "ak.txt",
     "rk_file": "rk.txt",
     "token_json_dir": "codex_tokens",
-    "server_config_url": "",
-    "server_api_token": "",
-    "domain_report_url": "",
     "upload_api_url": upload_api_url,
     "upload_api_token": upload_api_token,
-    "oauth_issuer": "https://auth.openai.com",
-    "oauth_client_id": "app_EMoamEEZ73f0CkXaXp7hrann",
-    "oauth_redirect_uri": "http://localhost:1455/auth/callback",
+    "oauth_issuer": config.get("oauth_issuer", "https://auth.openai.com"),
+    "oauth_client_id": config.get("oauth_client_id", "app_EMoamEEZ73f0CkXaXp7hrann"),
+    "oauth_redirect_uri": config.get("oauth_redirect_uri", "http://localhost:1455/auth/callback"),
     "enable_oauth": True,
     "oauth_required": True,
-}
+})
 
-web_config = {
+web_config = load_default(default_web_config_file)
+web_config.update({
     "target_min_tokens": int(target_min_tokens),
-    "auto_fill_start_gap": 1,
-    "check_interval_minutes": 1,
+    "auto_fill_start_gap": int(web_config.get("auto_fill_start_gap", 1)),
+    "check_interval_minutes": int(web_config.get("check_interval_minutes", 1)),
     "manual_default_threads": int(threads),
-    "manual_register_retries": 3,
+    "manual_register_retries": int(web_config.get("manual_register_retries", 3)),
     "web_token": web_token,
     "client_api_token": client_api_token,
-    "client_notice": "",
-    "minimum_client_version": "",
     "enabled_email_domains": domains,
     "mail_domain_options": domains,
     "default_proxy": default_proxy,
@@ -86,11 +95,13 @@ web_config = {
     "mail_api_url": mail_api_url,
     "mail_api_key": mail_api_key,
     "port": int(port),
-}
+})
 
-(base / "config.json").write_text(json.dumps(config, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-(base / "config" / "web_config.json").write_text(json.dumps(web_config, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+config_path.write_text(json.dumps(config, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+web_config_path.write_text(json.dumps(web_config, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 PY
 
 cd "${INSTALL_DIR}"
+echo "[openreg] config seeded to ${INSTALL_DIR}"
+echo "[openreg] mail_api_url=${MAIL_API_URL} cpa_base_url=${CPA_BASE_URL} threads=${THREADS} target=${TARGET_MIN_TOKENS}"
 exec /usr/local/bin/dan-web

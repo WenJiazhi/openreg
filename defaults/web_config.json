@@ -1,0 +1,20 @@
+{
+  "target_min_tokens": 15000,
+  "auto_fill_start_gap": 1,
+  "check_interval_minutes": 1,
+  "manual_default_threads": 40,
+  "manual_register_retries": 3,
+  "web_token": "linuxdo",
+  "client_api_token": "linuxdo",
+  "client_notice": "",
+  "minimum_client_version": "",
+  "enabled_email_domains": [],
+  "mail_domain_options": [],
+  "default_proxy": "",
+  "use_registration_proxy": false,
+  "cpa_base_url": "https://cpa.cpapi.app",
+  "cpa_token": "admin123",
+  "mail_api_url": "http://140.245.126.24:9000/",
+  "mail_api_key": "linuxdo",
+  "port": 25666
+}
