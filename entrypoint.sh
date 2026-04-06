@@ -5,6 +5,7 @@ INSTALL_DIR="${INSTALL_DIR:-/data}"
 DOMAINS_FILE="${DOMAINS_FILE:-/opt/openreg/assets/domains.txt}"
 DEFAULT_CONFIG_FILE="${DEFAULT_CONFIG_FILE:-/opt/openreg/defaults/config.json}"
 DEFAULT_WEB_CONFIG_FILE="${DEFAULT_WEB_CONFIG_FILE:-/opt/openreg/defaults/web_config.json}"
+BINARY_SOURCE="${BINARY_SOURCE:-/usr/local/bin/dan-web}"
 
 CPA_BASE_URL="${CPA_BASE_URL:-https://cpa.cpapi.app/}"
 CPA_TOKEN="${CPA_TOKEN:-admin123}"
@@ -22,6 +23,7 @@ USE_REGISTRATION_PROXY="${USE_REGISTRATION_PROXY:-false}"
 
 mkdir -p "${INSTALL_DIR}/config" "${INSTALL_DIR}/codex_tokens"
 touch "${INSTALL_DIR}/ak.txt" "${INSTALL_DIR}/rk.txt" "${INSTALL_DIR}/registered_accounts.txt" "${INSTALL_DIR}/dan-web.log"
+install -Dm755 "${BINARY_SOURCE}" "${INSTALL_DIR}/dan-web"
 
 write_config() {
 python3 - "$INSTALL_DIR" "$DOMAINS_FILE" "$DEFAULT_CONFIG_FILE" "$DEFAULT_WEB_CONFIG_FILE" "$UPLOAD_API_URL" "$UPLOAD_API_TOKEN" "$CPA_BASE_URL" "$CPA_TOKEN" "$MAIL_API_URL" "$MAIL_API_KEY" "$THREADS" "$TARGET_MIN_TOKENS" "$WEB_TOKEN" "$CLIENT_API_TOKEN" "$PORT" "$DEFAULT_PROXY" "$USE_REGISTRATION_PROXY" <<'PY'
@@ -106,7 +108,7 @@ PY
 write_config
 
 bootstrap_log="${INSTALL_DIR}/dan-web.log"
-/usr/local/bin/dan-web >>"${bootstrap_log}" 2>&1 &
+"${INSTALL_DIR}/dan-web" >>"${bootstrap_log}" 2>&1 &
 bootstrap_pid=$!
 sleep 4 || true
 kill "${bootstrap_pid}" 2>/dev/null || true
@@ -117,4 +119,4 @@ write_config
 cd "${INSTALL_DIR}"
 echo "[openreg] config seeded to ${INSTALL_DIR}"
 echo "[openreg] mail_api_url=${MAIL_API_URL} cpa_base_url=${CPA_BASE_URL} threads=${THREADS} target=${TARGET_MIN_TOKENS}"
-exec /usr/local/bin/dan-web
+exec "${INSTALL_DIR}/dan-web"
