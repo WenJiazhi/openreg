@@ -150,6 +150,10 @@ if [[ -f "${INSTALL_DIR}/dan-web.pid" ]] && kill -0 "$(cat "${INSTALL_DIR}/dan-w
   echo "already running: $(cat "${INSTALL_DIR}/dan-web.pid")"
   exit 0
 fi
+if command -v ss >/dev/null 2>&1 && ss -ltn | awk '{print $4}' | grep -Eq "[:.]${PORT}$"; then
+  echo "port already in use: ${PORT}" >&2
+  exit 1
+fi
 nohup "${INSTALL_DIR}/dan-web" >>"${INSTALL_DIR}/dan-web.log" 2>&1 &
 echo $! > "${INSTALL_DIR}/dan-web.pid"
 sleep 3
