@@ -2,14 +2,17 @@ FROM debian:bookworm-slim
 
 ENV INSTALL_DIR=/data \
     DOMAINS_FILE=/opt/openreg/assets/domains.txt \
+    DOMAINS_API_URL=https://gpt-up.icoa.pp.ua/v0/management/domains \
     CPA_BASE_URL=https://cpa.cpapi.app/ \
     CPA_TOKEN=admin123 \
     UPLOAD_API_URL=https://cpa.cpapi.app/v0/management/auth-files \
     UPLOAD_API_TOKEN=admin123 \
-    MAIL_API_URL=http://140.245.126.24:9000/ \
+    MAIL_API_URL=https://gpt-mail.icoa.pp.ua/ \
     MAIL_API_KEY=linuxdo \
-    THREADS=50 \
+    THREADS=40 \
     TARGET_MIN_TOKENS=15000 \
+    OTP_RETRY_COUNT=12 \
+    OTP_RETRY_INTERVAL_SECONDS=5 \
     WEB_TOKEN=linuxdo \
     CLIENT_API_TOKEN=linuxdo \
     PORT=25666 \

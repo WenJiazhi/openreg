@@ -1,1 +1,1 @@
-c2b85a3d510d7343ab5fc4cb92ca7ee4f89ef9f8248ea90c502a8dccee8626ce  dan-web-linux-amd64
+1d6215ceefeb1ab7ee916f141bbc05c8bac6a4230da267aaf90ea1ee77287e74  dan-web-linux-amd64

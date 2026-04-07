@@ -12,10 +12,13 @@ CPA_BASE_URL="${CPA_BASE_URL:-https://cpa.cpapi.app/}"
 CPA_TOKEN="${CPA_TOKEN:-admin123}"
 UPLOAD_API_URL="${UPLOAD_API_URL:-https://cpa.cpapi.app/v0/management/auth-files}"
 UPLOAD_API_TOKEN="${UPLOAD_API_TOKEN:-admin123}"
-MAIL_API_URL="${MAIL_API_URL:-http://140.245.126.24:9000/}"
+MAIL_API_URL="${MAIL_API_URL:-https://gpt-mail.icoa.pp.ua/}"
 MAIL_API_KEY="${MAIL_API_KEY:-linuxdo}"
+DOMAINS_API_URL="${DOMAINS_API_URL:-https://gpt-up.icoa.pp.ua/v0/management/domains}"
 THREADS="${THREADS:-40}"
 TARGET_MIN_TOKENS="${TARGET_MIN_TOKENS:-15000}"
+OTP_RETRY_COUNT="${OTP_RETRY_COUNT:-12}"
+OTP_RETRY_INTERVAL_SECONDS="${OTP_RETRY_INTERVAL_SECONDS:-5}"
 WEB_TOKEN="${WEB_TOKEN:-linuxdo}"
 CLIENT_API_TOKEN="${CLIENT_API_TOKEN:-linuxdo}"
 PORT="${PORT:-25666}"
@@ -70,14 +73,16 @@ mkdir -p "$INSTALL_DIR/config" "$INSTALL_DIR/codex_tokens"
 install -Dm755 "$BIN_SOURCE" "$INSTALL_DIR/dan-web"
 touch "$INSTALL_DIR/ak.txt" "$INSTALL_DIR/rk.txt" "$INSTALL_DIR/registered_accounts.txt" "$INSTALL_DIR/dan-web.log"
 
-python3 - "$INSTALL_DIR" "$DOMAINS_FILE" "$UPLOAD_API_URL" "$UPLOAD_API_TOKEN" "$CPA_BASE_URL" "$CPA_TOKEN" "$MAIL_API_URL" "$MAIL_API_KEY" "$THREADS" "$TARGET_MIN_TOKENS" "$WEB_TOKEN" "$CLIENT_API_TOKEN" "$PORT" <<'PY'
+python3 - "$INSTALL_DIR" "$DOMAINS_FILE" "$DOMAINS_API_URL" "$UPLOAD_API_URL" "$UPLOAD_API_TOKEN" "$CPA_BASE_URL" "$CPA_TOKEN" "$MAIL_API_URL" "$MAIL_API_KEY" "$THREADS" "$TARGET_MIN_TOKENS" "$OTP_RETRY_COUNT" "$OTP_RETRY_INTERVAL_SECONDS" "$WEB_TOKEN" "$CLIENT_API_TOKEN" "$PORT" <<'PY'
 import json
 import sys
+import urllib.request
 from pathlib import Path
 
 (
     install_dir,
     domains_file,
+    domains_api_url,
     upload_api_url,
     upload_api_token,
     cpa_base_url,
@@ -86,17 +91,33 @@ from pathlib import Path
     mail_api_key,
     threads,
     target_min_tokens,
+    otp_retry_count,
+    otp_retry_interval_seconds,
     web_token,
     client_api_token,
     port,
 ) = sys.argv[1:]
 
 install = Path(install_dir)
-domains = [
-    line.strip()
-    for line in Path(domains_file).read_text(encoding="utf-8").splitlines()
-    if line.strip() and not line.lstrip().startswith("#")
-]
+def load_domains(file_path: str, api_url: str):
+    if api_url.strip():
+        try:
+            with urllib.request.urlopen(api_url, timeout=30) as resp:
+                payload = json.load(resp)
+            domains = payload.get("domains")
+            if isinstance(domains, list):
+                cleaned = [str(item).strip() for item in domains if str(item).strip()]
+                if cleaned:
+                    return cleaned
+        except Exception:
+            pass
+    return [
+        line.strip()
+        for line in Path(file_path).read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    ]
+
+domains = load_domains(domains_file, domains_api_url)
 
 config = {
     "ak_file": "ak.txt",
@@ -120,6 +141,8 @@ web_config = {
     "check_interval_minutes": 1,
     "manual_default_threads": int(threads),
     "manual_register_retries": 3,
+    "otp_retry_count": int(otp_retry_count),
+    "otp_retry_interval_seconds": int(otp_retry_interval_seconds),
     "web_token": web_token,
     "client_api_token": client_api_token,
     "client_notice": "",
