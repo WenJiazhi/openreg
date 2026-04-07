@@ -7,6 +7,7 @@ DOMAINS_API_URL="${DOMAINS_API_URL:-https://gpt-up.icoa.pp.ua/v0/management/doma
 DEFAULT_CONFIG_FILE="${DEFAULT_CONFIG_FILE:-/opt/openreg/defaults/config.json}"
 DEFAULT_WEB_CONFIG_FILE="${DEFAULT_WEB_CONFIG_FILE:-/opt/openreg/defaults/web_config.json}"
 BINARY_SOURCE="${BINARY_SOURCE:-/usr/local/bin/dan-web}"
+STATUS_PROXY_SOURCE="${STATUS_PROXY_SOURCE:-/opt/openreg/status_proxy.py}"
 
 CPA_BASE_URL="${CPA_BASE_URL:-https://cpa.cpapi.app/}"
 CPA_TOKEN="${CPA_TOKEN:-admin123}"
@@ -21,15 +22,17 @@ OTP_RETRY_INTERVAL_SECONDS="${OTP_RETRY_INTERVAL_SECONDS:-5}"
 WEB_TOKEN="${WEB_TOKEN:-linuxdo}"
 CLIENT_API_TOKEN="${CLIENT_API_TOKEN:-linuxdo}"
 PORT="${PORT:-25666}"
+UPSTREAM_PORT="${UPSTREAM_PORT:-25667}"
 DEFAULT_PROXY="${DEFAULT_PROXY:-}"
 USE_REGISTRATION_PROXY="${USE_REGISTRATION_PROXY:-false}"
 
 mkdir -p "${INSTALL_DIR}/config" "${INSTALL_DIR}/codex_tokens"
 touch "${INSTALL_DIR}/ak.txt" "${INSTALL_DIR}/rk.txt" "${INSTALL_DIR}/registered_accounts.txt" "${INSTALL_DIR}/dan-web.log"
 install -Dm755 "${BINARY_SOURCE}" "${INSTALL_DIR}/dan-web"
+install -Dm755 "${STATUS_PROXY_SOURCE}" "${INSTALL_DIR}/status_proxy.py"
 
 write_config() {
-python3 - "$INSTALL_DIR" "$DOMAINS_FILE" "$DOMAINS_API_URL" "$DEFAULT_CONFIG_FILE" "$DEFAULT_WEB_CONFIG_FILE" "$UPLOAD_API_URL" "$UPLOAD_API_TOKEN" "$CPA_BASE_URL" "$CPA_TOKEN" "$MAIL_API_URL" "$MAIL_API_KEY" "$THREADS" "$TARGET_MIN_TOKENS" "$OTP_RETRY_COUNT" "$OTP_RETRY_INTERVAL_SECONDS" "$WEB_TOKEN" "$CLIENT_API_TOKEN" "$PORT" "$DEFAULT_PROXY" "$USE_REGISTRATION_PROXY" <<'PY'
+python3 - "$INSTALL_DIR" "$DOMAINS_FILE" "$DOMAINS_API_URL" "$DEFAULT_CONFIG_FILE" "$DEFAULT_WEB_CONFIG_FILE" "$UPLOAD_API_URL" "$UPLOAD_API_TOKEN" "$CPA_BASE_URL" "$CPA_TOKEN" "$MAIL_API_URL" "$MAIL_API_KEY" "$THREADS" "$TARGET_MIN_TOKENS" "$OTP_RETRY_COUNT" "$OTP_RETRY_INTERVAL_SECONDS" "$WEB_TOKEN" "$CLIENT_API_TOKEN" "$UPSTREAM_PORT" "$DEFAULT_PROXY" "$USE_REGISTRATION_PROXY" <<'PY'
 import json
 import sys
 import urllib.request
@@ -142,4 +145,26 @@ write_config
 cd "${INSTALL_DIR}"
 echo "[openreg] config seeded to ${INSTALL_DIR}"
 echo "[openreg] mail_api_url=${MAIL_API_URL} domains_api_url=${DOMAINS_API_URL} cpa_base_url=${CPA_BASE_URL} threads=${THREADS} target=${TARGET_MIN_TOKENS} otp_retry_count=${OTP_RETRY_COUNT} otp_retry_interval_seconds=${OTP_RETRY_INTERVAL_SECONDS}"
-exec "${INSTALL_DIR}/dan-web"
+
+"${INSTALL_DIR}/dan-web" >>"${bootstrap_log}" 2>&1 &
+dan_pid=$!
+
+python3 "${INSTALL_DIR}/status_proxy.py" \
+  --listen-host 0.0.0.0 \
+  --listen-port "${PORT}" \
+  --upstream-port "${UPSTREAM_PORT}" \
+  --cpa-base-url "${CPA_BASE_URL}" \
+  --cpa-token "${CPA_TOKEN}" >>"${bootstrap_log}" 2>&1 &
+proxy_pid=$!
+
+cleanup() {
+  kill "${proxy_pid}" 2>/dev/null || true
+  kill "${dan_pid}" 2>/dev/null || true
+  wait "${proxy_pid}" 2>/dev/null || true
+  wait "${dan_pid}" 2>/dev/null || true
+}
+
+trap cleanup EXIT INT TERM
+
+wait -n "${dan_pid}" "${proxy_pid}"
+exit $?

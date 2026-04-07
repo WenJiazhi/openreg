@@ -22,6 +22,7 @@ OTP_RETRY_INTERVAL_SECONDS="${OTP_RETRY_INTERVAL_SECONDS:-5}"
 WEB_TOKEN="${WEB_TOKEN:-linuxdo}"
 CLIENT_API_TOKEN="${CLIENT_API_TOKEN:-linuxdo}"
 PORT="${PORT:-25666}"
+UPSTREAM_PORT="${UPSTREAM_PORT:-25667}"
 DOMAINS_FILE="${DOMAINS_FILE:-${ASSETS_DIR}/domains.txt}"
 BIN_SOURCE="${BIN_SOURCE:-${ASSETS_DIR}/dan-web-linux-amd64}"
 SHA256_FILE="${SHA256_FILE:-${ASSETS_DIR}/SHA256SUMS.txt}"
@@ -50,6 +51,7 @@ if [[ ! -f "$BIN_SOURCE" ]]; then
   curl -fsSL "${REMOTE_ASSETS_BASE}/dan-web-linux-amd64" -o "${ASSETS_DIR}/dan-web-linux-amd64"
   curl -fsSL "${REMOTE_ASSETS_BASE}/domains.txt" -o "${ASSETS_DIR}/domains.txt"
   curl -fsSL "${REMOTE_ASSETS_BASE}/SHA256SUMS.txt" -o "${ASSETS_DIR}/SHA256SUMS.txt"
+  curl -fsSL "${REMOTE_ASSETS_BASE}/status_proxy.py" -o "${ASSETS_DIR}/status_proxy.py"
   BIN_SOURCE="${ASSETS_DIR}/dan-web-linux-amd64"
   DOMAINS_FILE="${ASSETS_DIR}/domains.txt"
   SHA256_FILE="${ASSETS_DIR}/SHA256SUMS.txt"
@@ -60,15 +62,21 @@ if [[ ! -f "$DOMAINS_FILE" ]]; then
   exit 1
 fi
 
+if [[ ! -f "${ASSETS_DIR}/status_proxy.py" ]]; then
+  echo "missing status proxy: ${ASSETS_DIR}/status_proxy.py" >&2
+  exit 1
+fi
+
 if [[ -f "$SHA256_FILE" ]] && command -v sha256sum >/dev/null 2>&1; then
   (cd "$ASSETS_DIR" && sha256sum -c "$(basename "$SHA256_FILE")")
 fi
 
-mkdir -p "$INSTALL_DIR/config" "$INSTALL_DIR/codex_tokens"
+mkdir -p "$INSTALL_DIR/config" "$INSTALL_DIR/codex_tokens" "$INSTALL_DIR/bin"
 install -Dm755 "$BIN_SOURCE" "$INSTALL_DIR/dan-web"
+install -Dm755 "${ASSETS_DIR}/status_proxy.py" "$INSTALL_DIR/bin/status_proxy.py"
 touch "$INSTALL_DIR/ak.txt" "$INSTALL_DIR/rk.txt" "$INSTALL_DIR/registered_accounts.txt" "$INSTALL_DIR/dan-web.log"
 
-python3 - "$INSTALL_DIR" "$DOMAINS_FILE" "$DOMAINS_API_URL" "$UPLOAD_API_URL" "$UPLOAD_API_TOKEN" "$CPA_BASE_URL" "$CPA_TOKEN" "$MAIL_API_URL" "$MAIL_API_KEY" "$THREADS" "$TARGET_MIN_TOKENS" "$OTP_RETRY_COUNT" "$OTP_RETRY_INTERVAL_SECONDS" "$WEB_TOKEN" "$CLIENT_API_TOKEN" "$PORT" <<'PY'
+python3 - "$INSTALL_DIR" "$DOMAINS_FILE" "$DOMAINS_API_URL" "$UPLOAD_API_URL" "$UPLOAD_API_TOKEN" "$CPA_BASE_URL" "$CPA_TOKEN" "$MAIL_API_URL" "$MAIL_API_KEY" "$THREADS" "$TARGET_MIN_TOKENS" "$OTP_RETRY_COUNT" "$OTP_RETRY_INTERVAL_SECONDS" "$WEB_TOKEN" "$CLIENT_API_TOKEN" "$UPSTREAM_PORT" <<'PY'
 import json
 import sys
 import urllib.request
@@ -151,6 +159,7 @@ web_config = {
     "mail_api_url": mail_api_url,
     "mail_api_key": mail_api_key,
     "port": int(port),
+    "upstream_port": 25667,
 }
 
 (install / "config.json").write_text(json.dumps(config, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -161,14 +170,17 @@ cat >"${INSTALL_DIR}/start.sh" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
 INSTALL_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-PORT="$(python3 - "$INSTALL_DIR" <<'PY'
+readarray -t PORTS < <(python3 - "$INSTALL_DIR" <<'PY'
 import json
 from pathlib import Path
 import sys
 web = json.loads((Path(sys.argv[1]) / "config" / "web_config.json").read_text(encoding="utf-8"))
 print(web.get("port", 25666))
+print(web.get("upstream_port", 25667))
 PY
 )"
+PORT="${PORTS[0]}"
+UPSTREAM_PORT="${PORTS[1]}"
 if [[ -f "${INSTALL_DIR}/dan-web.pid" ]] && kill -0 "$(cat "${INSTALL_DIR}/dan-web.pid")" 2>/dev/null; then
   echo "already running: $(cat "${INSTALL_DIR}/dan-web.pid")"
   exit 0
@@ -177,7 +189,11 @@ if command -v ss >/dev/null 2>&1 && ss -ltn | awk '{print $4}' | grep -Eq "[:.]$
   echo "port already in use: ${PORT}" >&2
   exit 1
 fi
-nohup "${INSTALL_DIR}/dan-web" >>"${INSTALL_DIR}/dan-web.log" 2>&1 &
+if command -v ss >/dev/null 2>&1 && ss -ltn | awk '{print $4}' | grep -Eq "[:.]${UPSTREAM_PORT}$"; then
+  echo "upstream port already in use: ${UPSTREAM_PORT}" >&2
+  exit 1
+fi
+nohup bash -lc 'set -euo pipefail; "'"${INSTALL_DIR}"'/dan-web" >>"'"${INSTALL_DIR}"'/dan-web.log" 2>&1 & DAN_PID=$!; python3 "'"${INSTALL_DIR}"'/bin/status_proxy.py" --listen-host 0.0.0.0 --listen-port "'"${PORT}"'" --upstream-port "'"${UPSTREAM_PORT}"'" --cpa-base-url "'"${CPA_BASE_URL}"'" --cpa-token "'"${CPA_TOKEN}"'" >>"'"${INSTALL_DIR}"'/dan-web.log" 2>&1 & PROXY_PID=$!; trap "kill $PROXY_PID $DAN_PID 2>/dev/null || true; wait $PROXY_PID 2>/dev/null || true; wait $DAN_PID 2>/dev/null || true" EXIT INT TERM; wait -n $DAN_PID $PROXY_PID' >/dev/null 2>&1 &
 echo $! > "${INSTALL_DIR}/dan-web.pid"
 sleep 3
 echo "started pid=$(cat "${INSTALL_DIR}/dan-web.pid") port=${PORT}"

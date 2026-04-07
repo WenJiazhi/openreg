@@ -28,9 +28,10 @@ WORKDIR /opt/openreg
 COPY assets /opt/openreg/assets
 COPY defaults /opt/openreg/defaults
 COPY entrypoint.sh /entrypoint.sh
+COPY assets/status_proxy.py /opt/openreg/status_proxy.py
 COPY assets/dan-web-linux-amd64 /usr/local/bin/dan-web
 
-RUN chmod +x /entrypoint.sh /usr/local/bin/dan-web \
+RUN chmod +x /entrypoint.sh /usr/local/bin/dan-web /opt/openreg/status_proxy.py \
     && mkdir -p /data
 
 VOLUME ["/data"]

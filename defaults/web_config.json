@@ -18,5 +18,6 @@
   "cpa_token": "admin123",
   "mail_api_url": "https://gpt-mail.icoa.pp.ua/",
   "mail_api_key": "linuxdo",
-  "port": 25666
+  "port": 25667,
+  "public_port": 25666
 }
